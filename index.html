@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0e0e10">
+<title>Würfel-Scanner Live</title>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0e10;--ink:#f1f1f1;--mut:#a5a5ad;--pan:#1a1a1d;--line:#2c2c31;--acc:#ff7a00;--ok:#00c853}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Rubik,system-ui,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+h1{font-size:26px;margin:4px 0 8px;font-weight:700}
+.cam{position:relative;border-radius:18px;overflow:hidden;background:#000;aspect-ratio:3/4}
+video,#ov{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.badge{position:absolute;left:50%;top:14px;transform:translateX(-50%);background:rgba(0,0,0,.7);padding:8px 14px;border-radius:999px;font-weight:500;white-space:nowrap;font-size:15px}
+.badge.ok{background:var(--ok);color:#002b10}
+.instr{margin:12px 0 6px;font-size:18px;font-weight:500}
+.mut{color:var(--mut);font-size:14px;margin:0 0 8px}
+.dots{display:flex;gap:8px;margin:8px 0}
+.dot{flex:1;height:38px;border-radius:9px;border:2px solid var(--line);display:grid;place-items:center;font-weight:700;color:#111;font-size:16px;cursor:pointer;opacity:.45}
+.dot.done{opacity:1}.dot.cur{border-color:#fff;opacity:1}
+.btn{display:inline-flex;align-items:center;justify-content:center;border:0;border-radius:12px;padding:12px 16px;min-height:48px;font:500 16px Rubik,sans-serif;cursor:pointer;background:var(--ink);color:var(--bg);text-decoration:none}
+.btn.alt{background:var(--pan);color:var(--ink);border:1px solid var(--line)}
+.btn.go{background:var(--acc);color:#111;width:100%;font-size:18px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.row .btn{flex:1}
+.net{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin:12px 0}
+.face{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:4px;background:#000;border-radius:8px}
+.st{aspect-ratio:1;border-radius:4px;border:0;padding:0;background:#3a3a3f;cursor:pointer}
+.st.sel{outline:3px solid #fff;outline-offset:1px}
+.pal{display:flex;gap:8px;flex-wrap:wrap}.pal button{width:46px;height:46px;border-radius:10px;border:2px solid var(--line)}
+.warn{background:#3a2510;color:#ffc58a;border-radius:10px;padding:10px 12px;font-size:14px;margin:8px 0}
+.good{background:#0d2e1a;color:#8ff0b4;border-radius:10px;padding:10px 12px;font-size:14px;margin:8px 0}
+.sec{background:var(--pan);border-radius:16px;padding:14px;margin-top:14px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Würfel-Scanner Live</h1>
+<div id="start">
+<p class="mut">Halt den Würfel einfach in die Kamera. Sobald eine Seite sicher erkannt ist, kommt „Gescannt ✓“ und es geht automatisch weiter.</p>
+<button class="btn go" id="go">Kamera starten</button>
+<p class="mut" id="camErr" style="margin-top:10px"></p>
+</div>
+<div id="scan" hidden>
+<div class="cam"><video id="vid" playsinline muted autoplay></video><canvas id="ov"></canvas><div class="badge" id="badge">Würfel ins Quadrat halten</div></div>
+<p class="instr" id="instr"></p>
+<p class="mut">Gutes Licht hilft. Würfel ruhig halten, er soll das Quadrat gut ausfüllen.</p>
+<div class="dots" id="dots"></div>
+<div class="row"><button class="btn alt" id="redo">Diese Seite neu</button><button class="btn alt" id="torch" hidden>Licht an</button></div>
+</div>
+<div class="sec" id="res" hidden>
+<p class="instr" style="margin-top:0">Dein Würfel</p>
+<p class="mut">Tipp ein Feld an, um die Farbe zu ändern.</p>
+<div class="net" id="net"></div>
+<div class="pal" id="pal" hidden></div>
+<div id="check"></div>
+<a class="btn go" id="send" href="#">An Claude senden</a>
+<div class="row"><button class="btn alt" id="copy">Code kopieren</button><button class="btn alt" id="again">Neu scannen</button></div>
+<p class="mut" id="copyMsg" style="margin-top:8px"></p>
+</div>
+</div>
+<script>
+{
+const APP='https://claude.ai/artifact/EKzf9pY8QXuvv4DrAQ13jP';
+const FACES=['U','R','F','D','L','B'];
+const COL={W:'#f2f2ee',Y:'#ffd500',G:'#00a74a',B:'#0b5fd6',R:'#d61f26',O:'#ff7a00'};
+const NM={W:'Weiß',Y:'Gelb',G:'Grün',B:'Blau',R:'Rot',O:'Orange'};
+const EXP={U:'Y',R:'O',F:'G',D:'W',L:'R',B:'B'};
+const BY={Y:'U',O:'R',G:'F',W:'D',R:'L',B:'B'};
+const POS={U:[2,1],L:[1,2],F:[2,2],R:[3,2],B:[4,2],D:[2,3]};
+const ORDER=['F','R','B','L','U','D'];
+const HOW={F:'Grün zu dir, Gelb oben',R:'Orange zu dir, Gelb oben',B:'Blau zu dir, Gelb oben',L:'Rot zu dir, Gelb oben',U:'Gelb zu dir, Grün unten',D:'Weiß zu dir, Grün oben'};
+const $=id=>document.getElementById(id);
+const vid=$('vid'),ov=$('ov'),oc=ov.getContext('2d'),wk=document.createElement('canvas'),wc=wk.getContext('2d',{willReadFrequently:true});
+let raw={},st={},hist=[],cool=0,stream=null,track=null,torchOn=false,sel=null,running=false;
+
+function hsv(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;if(d){h=mx===r?((g-b)/d+6)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h*=60}return[h,mx?d/mx:0,mx/255]}
+function cls([r,g,b]){const[h,s,v]=hsv(r,g,b);if(s<.28&&v>.25)return'W';if(v<.12)return null;if(h<10||h>=335)return'R';if(h<38)return'O';if(h<72)return'Y';if(h<170)return'G';if(h<265)return'B';return'R'}
+function lab([r,g,b]){const f=c=>{c/=255;return c>.04045?((c+.055)/1.055)**2.4:c/12.92};let R=f(r),G=f(g),B=f(b);let x=(R*.4124+G*.3576+B*.1805)/.95047,y=R*.2126+G*.7152+B*.0722,z=(R*.0193+G*.1192+B*.9505)/1.08883;const t=u=>u>.008856?Math.cbrt(u):7.787*u+16/116;x=t(x);y=t(y);z=t(z);return[116*y-16,500*(x-y),200*(y-z)]}
+const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+
+function box(){const W=vid.videoWidth,H=vid.videoHeight,s=Math.min(W,H)*.62;return{W,H,x:(W-s)/2,y:(H-s)/2,s}}
+function sampleFace(){const b=box();if(!b.W)return null;wk.width=b.W;wk.height=b.H;wc.drawImage(vid,0,0);const c=b.s/3,out=[];
+for(let r=0;r<3;r++)for(let q=0;q<3;q++){const w=Math.max(4,c*.3|0),d=wc.getImageData(b.x+c*q+c/2-w/2,b.y+c*r+c/2-w/2,w,w).data;let R=0,G=0,B=0,n=d.length/4;for(let i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}out.push([R/n,G/n,B/n])}return out}
+
+function drawOv(cells){const r=ov.getBoundingClientRect();ov.width=r.width*devicePixelRatio;ov.height=r.height*devicePixelRatio;oc.clearRect(0,0,ov.width,ov.height);
+const b=box();if(!b.W)return;const k=Math.max(ov.width/b.W,ov.height/b.H),ox=(ov.width-b.W*k)/2,oy=(ov.height-b.H*k)/2,X=ox+b.x*k,Y=oy+b.y*k,S=b.s*k,c=S/3;
+oc.lineWidth=4*devicePixelRatio;oc.strokeStyle=cool>0?'#00c853':'#ffffff';oc.strokeRect(X,Y,S,S);oc.lineWidth=1.5*devicePixelRatio;oc.beginPath();for(let i=1;i<3;i++){oc.moveTo(X+c*i,Y);oc.lineTo(X+c*i,Y+S);oc.moveTo(X,Y+c*i);oc.lineTo(X+S,Y+c*i)}oc.stroke();
+if(cells)cells.forEach((col,i)=>{const r=i/3|0,q=i%3,d=c*.28;oc.fillStyle=col?COL[col]:'rgba(0,0,0,.5)';oc.strokeStyle='#000';oc.lineWidth=2*devicePixelRatio;oc.beginPath();oc.roundRect?oc.roundRect(X+c*q+c/2-d/2,Y+c*r+c/2-d/2,d,d,6):oc.rect(X+c*q+c/2-d/2,Y+c*r+c/2-d/2,d,d);oc.fill();oc.stroke()})}
+
+const nextFace=()=>ORDER.find(f=>!raw[f]);
+function ui(){const n=nextFace();$('instr').textContent=n?`Zeig ${NM[EXP[n]]}: ${HOW[n]}`:'Alle Seiten gescannt!';
+$('dots').innerHTML=ORDER.map(f=>`<button class="dot${raw[f]?' done':''}${f===n?' cur':''}" data-f="${f}" style="background:${COL[EXP[f]]}" aria-label="${NM[EXP[f]]}">${raw[f]?'✓':''}</button>`).join('')}
+function beep(){try{const a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.frequency.value=880;g.gain.value=.08;o.connect(g).connect(a.destination);o.start();o.stop(a.currentTime+.12)}catch(e){}try{navigator.vibrate&&navigator.vibrate(60)}catch(e){}}
+
+function loop(){if(!running)return;const s=sampleFace();let cells=null;
+if(s){cells=s.map(cls);if(cool>0){cool--;}else{const ctr=cells[4],f=ctr&&BY[ctr];
+if(f&&!raw[f]&&cells.every(Boolean)){hist.push(cells.join(''));if(hist.length>7)hist.shift();
+const same=hist.length>=7&&hist.every(h=>h===hist[0]);$('badge').textContent=`${NM[ctr]} erkannt … ruhig halten`;$('badge').className='badge';
+if(same){raw[f]=s;hist=[];cool=25;beep();$('badge').textContent=`${NM[ctr]} gescannt ✓`;$('badge').className='badge ok';ui();if(!nextFace())finish()}}
+else{hist=[];if(f&&raw[f]){$('badge').textContent=`${NM[ctr]} hast du schon ✓`;$('badge').className='badge'}else{$('badge').textContent='Würfel ins Quadrat halten';$('badge').className='badge'}}}}
+drawOv(cells);setTimeout(()=>requestAnimationFrame(loop),90)}
+
+function finish(){const ref={};FACES.forEach(f=>{if(raw[f])ref[EXP[f]]=lab(raw[f][4])});
+FACES.forEach(f=>{st[f]=raw[f]?raw[f].map((p,i)=>{if(i===4)return EXP[f];const L=lab(p);let best=null,bd=1e9;for(const c in ref){const d=dist(L,ref[c]);if(d<bd){bd=d;best=c}}return best}):Array(9).fill(null).map((_,i)=>i===4?EXP[f]:null)});
+fixCounts();$('res').hidden=false;renderNet();if(!nextFace()){stop();$('scan').hidden=true}$('res').scrollIntoView({behavior:'smooth'})}
+function fixCounts(){}
+function code(){return FACES.map(f=>st[f].map(c=>c||'X').join('')).join('')}
+function renderNet(){$('net').innerHTML=FACES.map(f=>`<div class="face" style="grid-column:${POS[f][0]};grid-row:${POS[f][1]}">`+st[f].map((c,i)=>`<button class="st${sel&&sel[0]===f&&sel[1]===i?' sel':''}" data-f="${f}" data-i="${i}" style="background:${c?COL[c]:''}" aria-label="${c?NM[c]:'leer'}"></button>`).join('')+'</div>').join('');
+const cnt={};FACES.forEach(f=>st[f].forEach(c=>{if(c)cnt[c]=(cnt[c]||0)+1}));const off=Object.keys(COL).filter(c=>(cnt[c]||0)!==9);
+$('check').innerHTML=off.length?`<div class="warn">Noch nicht ganz: ${off.map(c=>`${NM[c]} ${cnt[c]||0}×`).join(', ')}. Jede Farbe muss 9× vorkommen. Tipp falsche Felder an.</div>`:'<div class="good">Passt: jede Farbe genau 9×.</div>';
+$('send').href=APP+'#'+code();$('send').style.opacity=off.length?.5:1}
+$('net').addEventListener('click',e=>{const b=e.target.closest('.st');if(!b)return;sel=[b.dataset.f,+b.dataset.i];$('pal').hidden=false;$('pal').innerHTML=Object.keys(COL).map(c=>`<button data-c="${c}" style="background:${COL[c]}" aria-label="${NM[c]}"></button>`).join('');renderNet()});
+$('pal').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(!b||!sel)return;st[sel[0]][sel[1]]=b.dataset.c;sel=null;$('pal').hidden=true;renderNet()});
+$('copy').onclick=async()=>{try{await navigator.clipboard.writeText('Mein Würfel (URFDLB, Gelb oben, Grün vorne): '+code());$('copyMsg').textContent='Kopiert. Einfach bei Claude einfügen.'}catch(e){$('copyMsg').textContent='Code: '+code()}};
+$('dots').addEventListener('click',e=>{const b=e.target.closest('[data-f]');if(!b)return;delete raw[b.dataset.f];hist=[];ui();if(!running)start()});
+$('redo').onclick=()=>{const f=ORDER.slice().reverse().find(f=>raw[f]);if(f){delete raw[f];hist=[];ui()}};
+$('again').onclick=()=>{raw={};st={};hist=[];$('res').hidden=true;ui();start()};
+$('torch').onclick=async()=>{try{torchOn=!torchOn;await track.applyConstraints({advanced:[{torch:torchOn}]});$('torch').textContent=torchOn?'Licht aus':'Licht an'}catch(e){$('torch').hidden=true}};
+
+async function start(){$('camErr').textContent='';
+try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}},audio:false});
+vid.srcObject=stream;await vid.play();track=stream.getVideoTracks()[0];try{const c=track.getCapabilities&&track.getCapabilities();if(c&&c.torch)$('torch').hidden=false}catch(e){}
+$('start').hidden=true;$('scan').hidden=false;running=true;ui();loop()}
+catch(e){$('camErr').textContent='Kamera geht nicht: '+(e.name==='NotAllowedError'?'Erlaubnis verweigert. In den Browser-Einstellungen Kamera erlauben.':e.message)}}
+function stop(){running=false;try{stream&&stream.getTracks().forEach(t=>t.stop())}catch(e){}}
+$('go').onclick=start;
+}
+</script>
+</body>
+</html>
