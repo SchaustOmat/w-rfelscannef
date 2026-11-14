@@ -96,6 +96,16 @@ const b=box();if(!b.W)return;const k=Math.max(ov.width/b.W,ov.height/b.H),ox=(ov
 oc.lineWidth=4*devicePixelRatio;oc.strokeStyle=cool>0?'#00c853':'#ffffff';oc.strokeRect(X,Y,S,S);oc.lineWidth=1.5*devicePixelRatio;oc.beginPath();for(let i=1;i<3;i++){oc.moveTo(X+c*i,Y);oc.lineTo(X+c*i,Y+S);oc.moveTo(X,Y+c*i);oc.lineTo(X+S,Y+c*i)}oc.stroke();
 if(cells)cells.forEach((col,i)=>{const r=i/3|0,q=i%3,d=c*.28;oc.fillStyle=col?COL[col]:'rgba(0,0,0,.5)';oc.strokeStyle='#000';oc.lineWidth=2*devicePixelRatio;oc.beginPath();oc.roundRect?oc.roundRect(X+c*q+c/2-d/2,Y+c*r+c/2-d/2,d,d,6):oc.rect(X+c*q+c/2-d/2,Y+c*r+c/2-d/2,d,d);oc.fill();oc.stroke()})}
 
+
+const CO={URF:[['U',8],['R',0],['F',2]],UFL:[['U',6],['F',0],['L',2]],ULB:[['U',0],['L',0],['B',2]],UBR:[['U',2],['B',0],['R',2]],DFR:[['D',2],['F',8],['R',6]],DLF:[['D',0],['L',8],['F',6]],DBL:[['D',6],['B',8],['L',6]],DRB:[['D',8],['R',8],['B',6]]};
+const ED={UR:[['U',5],['R',1]],UF:[['U',7],['F',1]],UL:[['U',3],['L',1]],UB:[['U',1],['B',1]],DR:[['D',5],['R',7]],DF:[['D',1],['F',7]],DL:[['D',3],['L',7]],DB:[['D',7],['B',7]],FR:[['F',5],['R',3]],FL:[['F',3],['L',5]],BL:[['B',5],['L',3]],BR:[['B',3],['R',5]]};
+const SC={},SE={};for(const k in CO)SC[k]=CO[k].map(([f])=>EXP[f]).join('');for(const k in ED)SE[k]=ED[k].map(([f])=>EXP[f]).join('');
+const r3=t=>[t,t.slice(1)+t[0],t.slice(2)+t.slice(0,2)];
+function valid(s){const uc=new Set(),ue=new Set();for(const k in CO){const t=CO[k].map(([f,i])=>s[f][i]).join('');const m=Object.keys(SC).find(p=>r3(SC[p]).includes(t));if(!m||uc.has(m))return false;uc.add(m)}
+for(const k in ED){const t=ED[k].map(([f,i])=>s[f][i]).join('');const m=Object.keys(SE).find(p=>SE[p]===t||SE[p]===t[1]+t[0]);if(!m||ue.has(m))return false;ue.add(m)}return true}
+const rotF=a=>[a[6],a[3],a[0],a[7],a[4],a[1],a[8],a[5],a[2]];
+function autoRotate(s){if(!FACES.every(f=>s[f].every(Boolean)))return null;if(valid(s))return 0;
+for(let n=1;n<4096;n++){const t={};let x=n;for(const f of FACES){let a=s[f];for(let i=0;i<x%4;i++)a=rotF(a);x>>=2;t[f]=a}if(valid(t)){FACES.forEach(f=>s[f]=t[f]);return n}}return null}
 const nextFace=()=>ORDER.find(f=>!raw[f]);
 function ui(){const n=nextFace();$('instr').textContent=n?`Zeig ${NM[EXP[n]]}: ${HOW[n]}`:'Alle Seiten gescannt!';
 $('dots').innerHTML=ORDER.map(f=>`<button class="dot${raw[f]?' done':''}${f===n?' cur':''}" data-f="${f}" style="background:${COL[EXP[f]]}" aria-label="${NM[EXP[f]]}">${raw[f]?'✓':''}</button>`).join('')}
@@ -111,12 +121,12 @@ drawOv(cells);setTimeout(()=>requestAnimationFrame(loop),90)}
 
 function finish(){const ref={};FACES.forEach(f=>{if(raw[f])ref[EXP[f]]=lab(raw[f][4])});
 FACES.forEach(f=>{st[f]=raw[f]?raw[f].map((p,i)=>{if(i===4)return EXP[f];const L=lab(p);let best=null,bd=1e9;for(const c in ref){const d=dist(L,ref[c]);if(d<bd){bd=d;best=c}}return best}):Array(9).fill(null).map((_,i)=>i===4?EXP[f]:null)});
-fixCounts();$('res').hidden=false;renderNet();if(!nextFace()){stop();$('scan').hidden=true}$('res').scrollIntoView({behavior:'smooth'})}
-function fixCounts(){}
+const ar=autoRotate(st);rotNote=ar>0?'Ein paar Seiten waren beim Scannen gedreht. Hab ich automatisch korrigiert.':'';$('res').hidden=false;renderNet();if(!nextFace()){stop();$('scan').hidden=true}$('res').scrollIntoView({behavior:'smooth'})}
+let rotNote='';
 function code(){return FACES.map(f=>st[f].map(c=>c||'X').join('')).join('')}
 function renderNet(){$('net').innerHTML=FACES.map(f=>`<div class="face" style="grid-column:${POS[f][0]};grid-row:${POS[f][1]}">`+st[f].map((c,i)=>`<button class="st${sel&&sel[0]===f&&sel[1]===i?' sel':''}" data-f="${f}" data-i="${i}" style="background:${c?COL[c]:''}" aria-label="${c?NM[c]:'leer'}"></button>`).join('')+'</div>').join('');
 const cnt={};FACES.forEach(f=>st[f].forEach(c=>{if(c)cnt[c]=(cnt[c]||0)+1}));const off=Object.keys(COL).filter(c=>(cnt[c]||0)!==9);
-$('check').innerHTML=off.length?`<div class="warn">Noch nicht ganz: ${off.map(c=>`${NM[c]} ${cnt[c]||0}×`).join(', ')}. Jede Farbe muss 9× vorkommen. Tipp falsche Felder an.</div>`:'<div class="good">Passt: jede Farbe genau 9×.</div>';
+$('check').innerHTML=off.length?`<div class="warn">Noch nicht ganz: ${off.map(c=>`${NM[c]} ${cnt[c]||0}×`).join(', ')}. Jede Farbe muss 9× vorkommen. Tipp falsche Felder an.</div>`:(valid(st)?'<div class="good">Passt: der Würfel ist gültig.'+(rotNote?' '+rotNote:'')+'</div>':'<div class="warn">Jede Farbe ist 9× da, aber manche Teile passen nicht zusammen. Prüf, ob du jede Seite richtig herum gehalten hast (Gelb oben), oder tipp falsche Felder an.</div>');
 $('send').href=APP+'#'+code();$('send').style.opacity=off.length?.5:1}
 $('net').addEventListener('click',e=>{const b=e.target.closest('.st');if(!b)return;sel=[b.dataset.f,+b.dataset.i];$('pal').hidden=false;$('pal').innerHTML=Object.keys(COL).map(c=>`<button data-c="${c}" style="background:${COL[c]}" aria-label="${NM[c]}"></button>`).join('');renderNet()});
 $('pal').addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(!b||!sel)return;st[sel[0]][sel[1]]=b.dataset.c;sel=null;$('pal').hidden=true;renderNet()});
