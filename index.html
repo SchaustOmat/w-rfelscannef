@@ -78,13 +78,18 @@ const vid=$('vid'),ov=$('ov'),oc=ov.getContext('2d'),wk=document.createElement('
 let raw={},st={},hist=[],cool=0,stream=null,track=null,torchOn=false,sel=null,running=false;
 
 function hsv(r,g,b){const mx=Math.max(r,g,b),mn=Math.min(r,g,b),d=mx-mn;let h=0;if(d){h=mx===r?((g-b)/d+6)%6:mx===g?(b-r)/d+2:(r-g)/d+4;h*=60}return[h,mx?d/mx:0,mx/255]}
-function cls([r,g,b]){const[h,s,v]=hsv(r,g,b);if(s<.28&&v>.25)return'W';if(v<.12)return null;if(h<10||h>=335)return'R';if(h<38)return'O';if(h<72)return'Y';if(h<170)return'G';if(h<265)return'B';return'R'}
+function cls([r,g,b]){const[h,s,v]=hsv(r,g,b);if(s<.28)return v>.25?'W':null;if(v<.12)return null;if(h<10||h>=335)return'R';if(h<38)return'O';if(h<72)return'Y';if(h<170)return'G';if(h<265)return'B';return'R'}
 function lab([r,g,b]){const f=c=>{c/=255;return c>.04045?((c+.055)/1.055)**2.4:c/12.92};let R=f(r),G=f(g),B=f(b);let x=(R*.4124+G*.3576+B*.1805)/.95047,y=R*.2126+G*.7152+B*.0722,z=(R*.0193+G*.1192+B*.9505)/1.08883;const t=u=>u>.008856?Math.cbrt(u):7.787*u+16/116;x=t(x);y=t(y);z=t(z);return[116*y-16,500*(x-y),200*(y-z)]}
 const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
 
 function box(){const W=vid.videoWidth,H=vid.videoHeight,s=Math.min(W,H)*.62;return{W,H,x:(W-s)/2,y:(H-s)/2,s}}
 function sampleFace(){const b=box();if(!b.W)return null;wk.width=b.W;wk.height=b.H;wc.drawImage(vid,0,0);const c=b.s/3,out=[];
-for(let r=0;r<3;r++)for(let q=0;q<3;q++){const w=Math.max(4,c*.3|0),d=wc.getImageData(b.x+c*q+c/2-w/2,b.y+c*r+c/2-w/2,w,w).data;let R=0,G=0,B=0,n=d.length/4;for(let i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}out.push([R/n,G/n,B/n])}return out}
+const avg=(cx,cy,w)=>{const d=wc.getImageData(cx-w/2,cy-w/2,w,w).data;let R=0,G=0,B=0,n=d.length/4;for(let i=0;i<d.length;i+=4){R+=d[i];G+=d[i+1];B+=d[i+2]}return[R/n,G/n,B/n]};
+for(let r=0;r<3;r++)for(let q=0;q<3;q++){const cx=b.x+c*q+c/2,cy=b.y+c*r+c/2;
+if(r===1&&q===1){const o=c*.36,w=Math.max(3,c*.1|0),ps=[[0,-o],[0,o],[-o,0],[o,0],[0,-o*.88],[0,o*.88],[-o*.88,0],[o*.88,0]].map(([dx,dy])=>avg(cx+dx,cy+dy,w)),cnt={};
+ps.forEach(p=>{const k=cls(p);if(k)cnt[k]=(cnt[k]||0)+1});const top=Object.keys(cnt).sort((a,z)=>cnt[z]-cnt[a])[0];const sel=ps.filter(p=>cls(p)===top);
+out.push(sel.length?sel.reduce((a,p)=>[a[0]+p[0]/sel.length,a[1]+p[1]/sel.length,a[2]+p[2]/sel.length],[0,0,0]):avg(cx,cy,Math.max(4,c*.3|0)))}
+else out.push(avg(cx,cy,Math.max(4,c*.3|0)))}return out}
 
 function drawOv(cells){const r=ov.getBoundingClientRect();ov.width=r.width*devicePixelRatio;ov.height=r.height*devicePixelRatio;oc.clearRect(0,0,ov.width,ov.height);
 const b=box();if(!b.W)return;const k=Math.max(ov.width/b.W,ov.height/b.H),ox=(ov.width-b.W*k)/2,oy=(ov.height-b.H*k)/2,X=ox+b.x*k,Y=oy+b.y*k,S=b.s*k,c=S/3;
